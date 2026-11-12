@@ -1,0 +1,42 @@
+# Assessment inputs include personal OAuth credentials.
+interview-detail/
+oauth-credentials.json
+docs
+examples
+prompts
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+secrets.json
+
+# .NET build output
+**/bin/
+**/obj/
+artifacts/
+
+# Test output and coverage
+TestResults/
+**/TestResults/
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+
+# IDE and user-specific files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Agent execution scratch data
+.superpowers/
