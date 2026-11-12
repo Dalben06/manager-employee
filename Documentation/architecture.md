@@ -13,10 +13,6 @@ flowchart LR
     Client[Provider Clients] --> Api[ManagerEmployee.Api]
     Api --> Application[ManagerEmployee.Application]
     Api --> Infrastructure[ManagerEmployee.Infrastructure]
-    Api --> Provider1[Provider 1 Integration]
-    Api --> Provider2[Provider 2 Integration]
-    Provider1 --> Application
-    Provider2 --> Application
     Infrastructure --> Application
     Infrastructure --> Domain[ManagerEmployee.Domain]
     Application --> Domain
@@ -24,7 +20,7 @@ flowchart LR
     Infrastructure --> TrackTik[TrackTik API]
 ```
 
-Dependencies point toward Domain and Application policy. The API references Infrastructure and both provider integrations because it is the composition root that activates concrete adapters.
+Dependencies point toward Domain and Application policy. The API references Infrastructure because it is the composition root that activates concrete adapters.
 
 ## Project Boundaries
 
@@ -40,9 +36,9 @@ Owns the directly injected synchronization command handler and employee query ha
 
 Implements the EF Core context, tracked employee write repository, no-tracking employee read store, SQL Server mapping, migrations under `Persistence/Migrations`, expected conflict translation, and the mandatory in-memory event publisher. It will also own TrackTik HTTP integration and OAuth token acquisition and caching.
 
-### Provider Integration Projects
+#### Providers
 
-`ManagerEmployee.Infrastructure.Provider1.Integration` and `ManagerEmployee.Infrastructure.Provider2.Integration` own their external JSON models, explicit validators, and mapping adapters. External provider DTOs are internal to these projects. The adapters return application-owned normalized records and never pass provider objects into Domain or persistence.
+`Infrastructure/Providers/Provider1` and `Infrastructure/Providers/Provider2` own each provider's external JSON model, a FluentValidation validator, and an `IProviderEmployeeMapper`. Validators compose the shared rules in `ProviderFieldRules` and report errors under the provider's JSON field names (for example `personal_info.email`). Provider DTOs are internal; mappers return the application-owned `MappedEmployee` and never pass provider objects into Domain or persistence. The command handler resolves the mapper by parsing the route value with `EmployeeProviderExtensions.TryParseContractValue`.
 
 ### ManagerEmployee.Api
 
@@ -90,6 +86,8 @@ sequenceDiagram
 The two database commits around the external call are intentional. The first preserves the attempt even if TrackTik is unavailable; the second records its outcome.
 
 ## Persistence Boundary
+
+Migrations are applied explicitly with `dotnet ef database update`, or at API startup when `Database:ApplyMigrationsOnStartup` is true (Compose enables it so reviewers do not need EF tooling).
 
 Domain defines the employee aggregate repository abstraction, following the aggregate-oriented repository pattern used by the [ABCCompany](https://github.com/Dalben06/AbcCompany) and [Equinox](https://github.com/EduardoPires/EquinoxProject) examples. Application consumes that abstraction to coordinate explicit pending and outcome commits, while Infrastructure implements it with EF Core and SQL Server. The contractual pair `(provider, providerEmployeeId)` is the primary key. The database also enforces lowercase status check constraints and optimistic concurrency through `rowversion`. A separate Application read-store port is implemented with `AsNoTracking` projection to `EmployeeDetails`. A generic repository is intentionally excluded because it would hide synchronization-specific operations and commit boundaries. See ADRs 0002 and 0003.
 

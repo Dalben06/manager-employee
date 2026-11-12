@@ -3,8 +3,6 @@
   <ItemGroup>
     <ProjectReference Include="..\ManagerEmployee.Application\ManagerEmployee.Application.csproj" />
     <ProjectReference Include="..\ManagerEmployee.Infrastructure\ManagerEmployee.Infrastructure.csproj" />
-    <ProjectReference Include="..\ManagerEmployee.Infrastructure.Provider1.Integration\ManagerEmployee.Infrastructure.Provider1.Integration.csproj" />
-    <ProjectReference Include="..\ManagerEmployee.Infrastructure.Provider2.Integration\ManagerEmployee.Infrastructure.Provider2.Integration.csproj" />
   </ItemGroup>
 
   <ItemGroup>

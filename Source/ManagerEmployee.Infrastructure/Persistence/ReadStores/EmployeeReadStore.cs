@@ -8,87 +8,39 @@ namespace ManagerEmployee.Infrastructure.Persistence.ReadStores;
 
 internal sealed class EmployeeReadStore(ManagerEmployeeDbContext dbContext) : IEmployeeReadStore
 {
-    public async Task<EmployeeDetails?> FindAsync(
+    public Task<EmployeeDetails?> FindAsync(
         EmployeeProvider provider,
         string providerEmployeeId,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerEmployeeId);
 
-        var employee = await dbContext.Employees
+        // The final projection runs client-side only for the derived TrackTik identifier.
+        return dbContext.Employees
             .AsNoTracking()
-            .Where(candidate =>
-                candidate.Provider == provider &&
-                candidate.ProviderEmployeeId == providerEmployeeId)
-            .Select(candidate => new EmployeeReadRow
+            .Where(employee =>
+                employee.Provider == provider &&
+                employee.ProviderEmployeeId == providerEmployeeId)
+            .Select(employee => new EmployeeDetails
             {
-                Provider = candidate.Provider,
-                ProviderEmployeeId = candidate.ProviderEmployeeId,
-                FirstName = candidate.FirstName,
-                LastName = candidate.LastName,
-                Email = candidate.Email,
-                PhoneNumber = candidate.PhoneNumber,
-                Position = candidate.Position,
-                Department = candidate.Department,
-                StartDate = candidate.StartDate,
-                EmploymentStatus = candidate.EmploymentStatus,
-                SyncStatus = candidate.SyncStatus,
-                Attempts = candidate.Attempts,
-                LastAttemptAt = candidate.LastAttemptAt,
-                LastError = candidate.LastError,
+                Provider = employee.Provider,
+                ProviderEmployeeId = employee.ProviderEmployeeId,
+                TrackTikEmployeeId = TrackTikEmployeeIdentifier.Create(
+                    employee.Provider,
+                    employee.ProviderEmployeeId),
+                FirstName = employee.FirstName,
+                LastName = employee.LastName,
+                Email = employee.Email,
+                PhoneNumber = employee.PhoneNumber,
+                Position = employee.Position,
+                Department = employee.Department,
+                StartDate = employee.StartDate,
+                EmploymentStatus = employee.EmploymentStatus,
+                SyncStatus = employee.SyncStatus,
+                Attempts = employee.Attempts,
+                LastAttemptAt = employee.LastAttemptAt,
+                LastError = employee.LastError,
             })
             .SingleOrDefaultAsync(cancellationToken);
-
-        return employee?.ToDetails();
-    }
-
-    private sealed class EmployeeReadRow
-    {
-        public EmployeeProvider Provider { get; init; }
-
-        public required string ProviderEmployeeId { get; init; }
-
-        public required string FirstName { get; init; }
-
-        public required string LastName { get; init; }
-
-        public required string Email { get; init; }
-
-        public string? PhoneNumber { get; init; }
-
-        public string? Position { get; init; }
-
-        public string? Department { get; init; }
-
-        public DateOnly? StartDate { get; init; }
-
-        public EmployeeStatus EmploymentStatus { get; init; }
-
-        public SynchronizationStatus SyncStatus { get; init; }
-
-        public int Attempts { get; init; }
-
-        public DateTimeOffset? LastAttemptAt { get; init; }
-
-        public string? LastError { get; init; }
-
-        public EmployeeDetails ToDetails() => new()
-        {
-            Provider = Provider,
-            ProviderEmployeeId = ProviderEmployeeId,
-            TrackTikEmployeeId = TrackTikEmployeeIdentifier.Create(Provider, ProviderEmployeeId),
-            FirstName = FirstName,
-            LastName = LastName,
-            Email = Email,
-            PhoneNumber = PhoneNumber,
-            Position = Position,
-            Department = Department,
-            StartDate = StartDate,
-            EmploymentStatus = EmploymentStatus,
-            SyncStatus = SyncStatus,
-            Attempts = Attempts,
-            LastAttemptAt = LastAttemptAt,
-            LastError = LastError,
-        };
     }
 }

@@ -203,7 +203,7 @@ public sealed class SyncEmployeeCommandHandlerTests
     {
         mapper ??= new FakeProviderMapper(ProviderEmployeeMappingResult.Success(MappedEmployee()));
         return new SyncEmployeeCommandHandler(
-            new EmployeeMapperFactory([mapper]),
+            [mapper],
             repository,
             trackTikClient,
             publisher,

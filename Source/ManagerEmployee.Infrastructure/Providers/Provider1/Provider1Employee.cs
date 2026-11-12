@@ -1,8 +1,8 @@
 using System.Text.Json.Serialization;
 
-namespace ManagerEmployee.Infrastructure.Provider1.Integration.Models;
+namespace ManagerEmployee.Infrastructure.Providers.Provider1;
 
-internal sealed class ProviderEmployee
+internal sealed class Provider1Employee
 {
     [JsonPropertyName("emp_id")]
     public string? EmployeeId { get; init; }

@@ -7,8 +7,6 @@
     <Project Path="Source/ManagerEmployee.Application/ManagerEmployee.Application.csproj" />
     <Project Path="Source/ManagerEmployee.Domain/ManagerEmployee.Domain.csproj" />
     <Project Path="Source/ManagerEmployee.Infrastructure/ManagerEmployee.Infrastructure.csproj" />
-    <Project Path="Source/ManagerEmployee.Infrastructure.Provider1.Integration/ManagerEmployee.Infrastructure.Provider1.Integration.csproj" />
-    <Project Path="Source/ManagerEmployee.Infrastructure.Provider2.Integration/ManagerEmployee.Infrastructure.Provider2.Integration.csproj" />
   </Folder>
   <Folder Name="/Tests/" />
   <Folder Name="/Tests/Apps/">

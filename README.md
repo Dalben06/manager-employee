@@ -16,9 +16,7 @@ Documentation/                         Architecture, dependencies, and ADRs
 Source/ManagerEmployee.Api/            ASP.NET Core host and composition root
 Source/ManagerEmployee.Application/
 Source/ManagerEmployee.Domain/
-Source/ManagerEmployee.Infrastructure/
-Source/ManagerEmployee.Infrastructure.Provider1.Integration/
-Source/ManagerEmployee.Infrastructure.Provider2.Integration/
+Source/ManagerEmployee.Infrastructure/  EF Core, provider adapters (Providers/), events
 Tests/ManagerEmployee.Api.IntegrationTests/
 Tests/ManagerEmployee.Application.Tests/
 Tests/ManagerEmployee.Domain.Tests/
@@ -75,6 +73,8 @@ docker compose down
 
 The API listens on `http://localhost:8080` by default. Override local host ports with `API_PORT` and `SQLSERVER_PORT`. Compose uses `sqlserver` as the database hostname and waits for its health check before starting the API.
 
+Compose sets `Database__ApplyMigrationsOnStartup=true`, so the API applies all pending EF Core migrations when it starts. No `dotnet-ef` installation is needed for the Compose workflow.
+
 The API consumes `ConnectionStrings:ManagerEmployeeDatabase`; Compose supplies it through `ConnectionStrings__ManagerEmployeeDatabase`. The TrackTik values establish the configuration contract for the later HTTP integration and are not consumed by a concrete client yet.
 
 ## TrackTik Configuration
@@ -105,6 +105,8 @@ dotnet ef database update \
   --project Source/ManagerEmployee.Infrastructure/ManagerEmployee.Infrastructure.csproj \
   --startup-project Source/ManagerEmployee.Infrastructure/ManagerEmployee.Infrastructure.csproj
 ```
+
+Alternatively, set `Database__ApplyMigrationsOnStartup=true` (or `Database:ApplyMigrationsOnStartup` in user secrets) before `dotnet run` to have the API apply migrations at startup, as Compose does.
 
 The Infrastructure project supplies a design-time context factory. At runtime, the API remains the composition root and registers the same SQL Server context and employee repository.
 

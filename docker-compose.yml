@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Database__ApplyMigrationsOnStartup: "true"
       ConnectionStrings__ManagerEmployeeDatabase: >-
         Server=sqlserver,1433;Database=ManagerEmployee;User ID=sa;Password=${SQLSERVER_SA_PASSWORD:?Set SQLSERVER_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True
       TrackTik__ApiBaseUrl: ${TRACKTIK_API_BASE_URL:?Set TRACKTIK_API_BASE_URL}

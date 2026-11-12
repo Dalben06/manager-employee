@@ -4,7 +4,7 @@ using ManagerEmployee.Application.Synchronization;
 using ManagerEmployee.Domain.Employees;
 using ManagerEmployee.Domain.Employees.Enums;
 using ManagerEmployee.Domain.Employees.Policies;
-using ManagerEmployee.Infrastructure.Provider1.Integration.Providers;
+using ManagerEmployee.Infrastructure.Providers.Provider1;
 
 namespace ManagerEmployee.Infrastructure.Tests.Providers;
 

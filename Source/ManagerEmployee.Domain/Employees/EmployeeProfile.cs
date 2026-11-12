@@ -1,4 +1,3 @@
-using System.Net.Mail;
 using ManagerEmployee.Domain.Employees.Enums;
 using ManagerEmployee.Domain.Employees.Policies;
 
@@ -74,8 +73,7 @@ public sealed record EmployeeProfile
     private static string ValidEmail(string value)
     {
         var normalizedEmail = Required(value, nameof(value), EmployeeFieldLimits.Email);
-        if (!MailAddress.TryCreate(normalizedEmail, out var parsed) ||
-            !string.Equals(parsed.Address, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+        if (!EmployeeEmailPolicy.IsValid(normalizedEmail))
         {
             throw new ArgumentException("Email must have a valid format.", nameof(value));
         }

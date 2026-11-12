@@ -3,12 +3,13 @@ using ManagerEmployee.Application.Events;
 using ManagerEmployee.Application.Providers;
 using ManagerEmployee.Application.Synchronization;
 using ManagerEmployee.Domain.Employees;
+using ManagerEmployee.Domain.Employees.Enums;
 using ManagerEmployee.Domain.Employees.Repositories;
 
 namespace ManagerEmployee.Application.Employees.Commands.SyncEmployee;
 
 public sealed class SyncEmployeeCommandHandler(
-    IEmployeeMapperFactory mapperFactory,
+    IEnumerable<IProviderEmployeeMapper> mappers,
     IEmployeeRepository employeeRepository,
     ITrackTikEmployeeClient trackTikEmployeeClient,
     IEmployeeSyncedEventPublisher eventPublisher,
@@ -21,7 +22,10 @@ public sealed class SyncEmployeeCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (!mapperFactory.TryGetMapper(command.Provider, out var mapper) || mapper is null)
+        var mapper = EmployeeProviderExtensions.TryParseContractValue(command.Provider, out var provider)
+            ? mappers.FirstOrDefault(candidate => candidate.Provider == provider)
+            : null;
+        if (mapper is null)
         {
             return SyncEmployeeResult.UnknownProvider();
         }
