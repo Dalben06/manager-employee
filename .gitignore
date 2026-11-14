@@ -1,9 +1,9 @@
 # Assessment inputs include personal OAuth credentials.
 interview-detail/
+examples/
+prompts/
 oauth-credentials.json
 docs
-examples
-prompts
 
 # Local configuration and secrets
 .env

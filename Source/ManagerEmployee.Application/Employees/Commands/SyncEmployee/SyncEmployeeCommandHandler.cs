@@ -46,6 +46,7 @@ public sealed class SyncEmployeeCommandHandler(
             mapped.Provider,
             mapped.ProviderEmployeeId,
             cancellationToken);
+        var employeeCreated = employee is null;
         var shouldUpdateTrackTik = employee?.HasBeenCreatedInTrackTik == true;
         var attempt = CreateAttempt(mapped, timeProvider.GetUtcNow());
 
@@ -67,16 +68,20 @@ public sealed class SyncEmployeeCommandHandler(
             return SyncEmployeeResult.PersistenceConflict();
         }
 
+        // Once pending is committed, finish the attempt even if the caller disconnects: abandoning it
+        // could leave the row pending after TrackTik accepted a POST, and the next submission would POST
+        // again. The TrackTik HttpClient timeout still bounds this work.
+        var completion = CancellationToken.None;
         var synchronizationResult = await SynchronizeAsync(
             TrackTikEmployee.FromDomain(employee),
             shouldUpdateTrackTik,
-            cancellationToken);
+            completion);
 
         if (!synchronizationResult.IsSuccess)
         {
             employee.MarkFailed(SynchronizationError.Create(
                 synchronizationResult.Error ?? "TrackTik synchronization failed."));
-            if (await employeeRepository.CommitAsync(cancellationToken) == EmployeeCommitOutcome.Conflict)
+            if (await employeeRepository.CommitAsync(completion) == EmployeeCommitOutcome.Conflict)
             {
                 return SyncEmployeeResult.PersistenceConflict();
             }
@@ -85,13 +90,13 @@ public sealed class SyncEmployeeCommandHandler(
         }
 
         var employeeSynced = employee.MarkSynced(timeProvider.GetUtcNow());
-        if (await employeeRepository.CommitAsync(cancellationToken) == EmployeeCommitOutcome.Conflict)
+        if (await employeeRepository.CommitAsync(completion) == EmployeeCommitOutcome.Conflict)
         {
             return SyncEmployeeResult.PersistenceConflict();
         }
 
-        await eventPublisher.PublishAsync(employeeSynced, cancellationToken);
-        return SyncEmployeeResult.Synchronized(EmployeeDetails.FromDomain(employee));
+        await eventPublisher.PublishAsync(employeeSynced, completion);
+        return SyncEmployeeResult.Synchronized(EmployeeDetails.FromDomain(employee), employeeCreated);
     }
 
     private async Task<TrackTikSyncResult> SynchronizeAsync(

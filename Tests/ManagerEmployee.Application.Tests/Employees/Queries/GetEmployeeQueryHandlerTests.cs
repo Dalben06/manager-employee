@@ -37,6 +37,22 @@ public sealed class GetEmployeeQueryHandlerTests
     }
 
     [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    public async Task HandleAsync_BlankIdentifier_ReturnsNullWithoutQueryingStore(string providerEmployeeId)
+    {
+        var readStore = new FakeEmployeeReadStore(null);
+        var handler = new GetEmployeeQueryHandler(readStore);
+
+        var result = await handler.HandleAsync(
+            new GetEmployeeQuery(EmployeeProvider.Provider1, providerEmployeeId),
+            CancellationToken.None);
+
+        Assert.IsNull(result);
+        Assert.IsNull(readStore.ProviderEmployeeId);
+    }
+
+    [TestMethod]
     public void EmployeeDetails_SameEmailAcrossProviders_PreservesDistinctIdentities()
     {
         var provider1 = EmployeeDetails(EmployeeProvider.Provider1, "SHARED");

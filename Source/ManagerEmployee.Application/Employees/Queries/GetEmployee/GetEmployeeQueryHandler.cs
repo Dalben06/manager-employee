@@ -10,7 +10,12 @@ public sealed class GetEmployeeQueryHandler(IEmployeeReadStore employeeReadStore
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
-        ArgumentException.ThrowIfNullOrWhiteSpace(query.ProviderEmployeeId);
+
+        // A blank identifier cannot match a stored employee; treat it as not found rather than an error.
+        if (string.IsNullOrWhiteSpace(query.ProviderEmployeeId))
+        {
+            return Task.FromResult<EmployeeDetails?>(null);
+        }
 
         return employeeReadStore.FindAsync(
             query.Provider,

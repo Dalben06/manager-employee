@@ -10,8 +10,6 @@ services:
       Database__ApplyMigrationsOnStartup: "true"
       ConnectionStrings__ManagerEmployeeDatabase: >-
         Server=sqlserver,1433;Database=ManagerEmployee;User ID=sa;Password=${SQLSERVER_SA_PASSWORD:?Set SQLSERVER_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True
-      TrackTik__ApiBaseUrl: ${TRACKTIK_API_BASE_URL:?Set TRACKTIK_API_BASE_URL}
-      TrackTik__TokenUrl: ${TRACKTIK_TOKEN_URL:?Set TRACKTIK_TOKEN_URL}
       TrackTik__ClientId: ${TRACKTIK_CLIENT_ID:?Set TRACKTIK_CLIENT_ID}
       TrackTik__ClientSecret: ${TRACKTIK_CLIENT_SECRET:?Set TRACKTIK_CLIENT_SECRET}
     ports:

@@ -30,6 +30,7 @@ public sealed class SyncEmployeeCommandHandlerTests
         Assert.AreEqual(SyncEmployeeOutcome.Synchronized, result.Outcome);
         Assert.IsNotNull(result.Employee);
         Assert.AreEqual("provider1-P1_001", result.Employee.TrackTikEmployeeId);
+        Assert.IsTrue(result.EmployeeCreated);
         CollectionAssert.AreEqual(
             new[] { "find", "add", "commit:Pending", "create", "commit:Synced", "publish" },
             operations);
@@ -56,6 +57,7 @@ public sealed class SyncEmployeeCommandHandlerTests
             new[] { "find", "commit:Pending", "update", "commit:Synced", "publish" },
             operations);
         Assert.AreEqual(2, existing.Attempts);
+        Assert.IsFalse(result.EmployeeCreated);
     }
 
     [TestMethod]
@@ -177,6 +179,29 @@ public sealed class SyncEmployeeCommandHandlerTests
     }
 
     [TestMethod]
+    public async Task HandleAsync_RequestCancelledDuringTrackTikCall_StillCommitsSyncedAndPublishes()
+    {
+        using var request = new CancellationTokenSource();
+        var operations = new List<string>();
+        var repository = new FakeEmployeeRepository(operations);
+        var trackTikClient = new FakeTrackTikEmployeeClient(operations, TrackTikSyncResult.Success())
+        {
+            OnCall = request.Cancel,
+        };
+        var publisher = new FakeEventPublisher(operations);
+        using var coordinator = new EmployeeSynchronizationCoordinator();
+        var handler = CreateHandler(repository, trackTikClient, publisher, coordinator);
+
+        var result = await handler.HandleAsync(Command(), request.Token);
+
+        Assert.AreEqual(SyncEmployeeOutcome.Synchronized, result.Outcome);
+        CollectionAssert.AreEqual(
+            new[] { "find", "add", "commit:Pending", "create", "commit:Synced", "publish" },
+            operations);
+        Assert.HasCount(1, publisher.Events);
+    }
+
+    [TestMethod]
     public async Task HandleAsync_UnknownProvider_ReturnsWithoutUsingCollaborators()
     {
         var operations = new List<string>();
@@ -277,6 +302,7 @@ public sealed class SyncEmployeeCommandHandlerTests
 
         public Task<EmployeeCommitOutcome> CommitAsync(CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             _commitCount++;
             operations.Add($"commit:{_employee?.SyncStatus}");
             if (_commitCount == ThrowOnCommitNumber)
@@ -295,11 +321,15 @@ public sealed class SyncEmployeeCommandHandlerTests
         List<string> operations,
         TrackTikSyncResult result) : ITrackTikEmployeeClient
     {
+        /// <summary>Runs when TrackTik is called, for example to simulate the caller disconnecting.</summary>
+        public Action? OnCall { get; init; }
+
         public Task<TrackTikSyncResult> CreateAsync(
             TrackTikEmployee employee,
             CancellationToken cancellationToken)
         {
             operations.Add("create");
+            OnCall?.Invoke();
             return Task.FromResult(result);
         }
 
@@ -308,6 +338,7 @@ public sealed class SyncEmployeeCommandHandlerTests
             CancellationToken cancellationToken)
         {
             operations.Add("update");
+            OnCall?.Invoke();
             return Task.FromResult(result);
         }
     }
@@ -320,6 +351,7 @@ public sealed class SyncEmployeeCommandHandlerTests
             EmployeeSynced notification,
             CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             operations.Add("publish");
             Events.Add(notification);
             return Task.CompletedTask;

@@ -35,7 +35,7 @@ internal sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
 
         builder.Property(employee => employee.Provider)
             .HasConversion(new ValueConverter<EmployeeProvider, string>(
-                provider => ToProviderValue(provider),
+                provider => provider.ToContractValue(),
                 value => FromProviderValue(value)))
             .HasMaxLength(32)
             .IsRequired();
@@ -70,14 +70,14 @@ internal sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
 
         builder.Property(employee => employee.EmploymentStatus)
             .HasConversion(new ValueConverter<EmployeeStatus, string>(
-                status => ToEmployeeStatusValue(status),
+                status => status.ToContractValue(),
                 value => FromEmployeeStatusValue(value)))
             .HasMaxLength(20)
             .IsRequired();
 
         builder.Property(employee => employee.SyncStatus)
             .HasConversion(new ValueConverter<SynchronizationStatus, string>(
-                status => ToSynchronizationStatusValue(status),
+                status => status.ToContractValue(),
                 value => FromSynchronizationStatusValue(value)))
             .HasMaxLength(20)
             .IsRequired();
@@ -98,26 +98,11 @@ internal sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
             .IsRequired();
     }
 
-    private static string ToProviderValue(EmployeeProvider provider) => provider switch
-    {
-        EmployeeProvider.Provider1 => "provider1",
-        EmployeeProvider.Provider2 => "provider2",
-        _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Provider is not supported."),
-    };
-
     private static EmployeeProvider FromProviderValue(string value) => value switch
     {
         "provider1" => EmployeeProvider.Provider1,
         "provider2" => EmployeeProvider.Provider2,
         _ => throw new InvalidOperationException($"Unsupported provider value '{value}'."),
-    };
-
-    private static string ToEmployeeStatusValue(EmployeeStatus status) => status switch
-    {
-        EmployeeStatus.Active => "active",
-        EmployeeStatus.Inactive => "inactive",
-        EmployeeStatus.Terminated => "terminated",
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Employment status is not supported."),
     };
 
     private static EmployeeStatus FromEmployeeStatusValue(string value) => value switch
@@ -126,14 +111,6 @@ internal sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         "inactive" => EmployeeStatus.Inactive,
         "terminated" => EmployeeStatus.Terminated,
         _ => throw new InvalidOperationException($"Unsupported employment status value '{value}'."),
-    };
-
-    private static string ToSynchronizationStatusValue(SynchronizationStatus status) => status switch
-    {
-        SynchronizationStatus.Pending => "pending",
-        SynchronizationStatus.Synced => "synced",
-        SynchronizationStatus.Failed => "failed",
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Synchronization status is not supported."),
     };
 
     private static SynchronizationStatus FromSynchronizationStatusValue(string value) => value switch

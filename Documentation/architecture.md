@@ -2,11 +2,11 @@
 
 ## Context
 
-ManagerEmployee receives employee submissions from two providers, validates and maps each provider format, persists synchronization state in SQL Server, and forwards employees to TrackTik. Provider validation and mapping, the normalized employee domain model, direct command/query use cases, EF Core write persistence and no-tracking reads, synchronization orchestration, and in-memory event publication are established. The employee API transport and concrete TrackTik HTTP/OAuth adapter remain to be implemented.
+ManagerEmployee receives employee submissions from two providers, validates and maps each provider format, persists synchronization state in SQL Server, and forwards employees to TrackTik. Provider validation and mapping, the normalized employee domain model, direct command/query use cases, EF Core write persistence and no-tracking reads, synchronization orchestration, and in-memory event publication are established. The versioned employee API and the OAuth2 TrackTik HTTP client are implemented.
 
 ## Architectural Style
 
-The solution uses a lightweight hybrid layered architecture with direct command/query separation. Projects define dependency boundaries, and behavior is organized by employee feature within the project that owns it. ASP.NET Core controllers provide the future HTTP transport boundary without introducing a mediator or dispatcher framework.
+The solution uses a lightweight hybrid layered architecture with direct command/query separation. Projects define dependency boundaries, and behavior is organized by employee feature within the project that owns it. ASP.NET Core controllers provide the HTTP transport boundary without introducing a mediator or dispatcher framework.
 
 ```mermaid
 flowchart LR
@@ -34,7 +34,7 @@ Owns the directly injected synchronization command handler and employee query ha
 
 ### ManagerEmployee.Infrastructure
 
-Implements the EF Core context, tracked employee write repository, no-tracking employee read store, SQL Server mapping, migrations under `Persistence/Migrations`, expected conflict translation, and the mandatory in-memory event publisher. It will also own TrackTik HTTP integration and OAuth token acquisition and caching.
+Implements the EF Core context, tracked employee write repository, no-tracking employee read store, SQL Server mapping, migrations under `Persistence/Migrations`, expected conflict translation, the mandatory in-memory event publisher, and the TrackTik HTTP client with OAuth token acquisition and caching.
 
 #### Providers
 
@@ -87,7 +87,7 @@ The two database commits around the external call are intentional. The first pre
 
 ## Persistence Boundary
 
-Migrations are applied explicitly with `dotnet ef database update`, or at API startup when `Database:ApplyMigrationsOnStartup` is true (Compose enables it so reviewers do not need EF tooling).
+Migrations are applied explicitly with `dotnet ef database update` (the API is the startup project, so there is no separate design-time configuration), or at API startup when `Database:ApplyMigrationsOnStartup` is true (Compose enables it so reviewers do not need EF tooling).
 
 Domain defines the employee aggregate repository abstraction, following the aggregate-oriented repository pattern used by the [ABCCompany](https://github.com/Dalben06/AbcCompany) and [Equinox](https://github.com/EduardoPires/EquinoxProject) examples. Application consumes that abstraction to coordinate explicit pending and outcome commits, while Infrastructure implements it with EF Core and SQL Server. The contractual pair `(provider, providerEmployeeId)` is the primary key. The database also enforces lowercase status check constraints and optimistic concurrency through `rowversion`. A separate Application read-store port is implemented with `AsNoTracking` projection to `EmployeeDetails`. A generic repository is intentionally excluded because it would hide synchronization-specific operations and commit boundaries. See ADRs 0002 and 0003.
 
@@ -100,17 +100,24 @@ Domain defines the employee aggregate repository abstraction, following the aggr
 
 ## External-System Boundary
 
-Infrastructure will use `IHttpClientFactory` for TrackTik and a separate OAuth token client. Token requests will be form encoded, tokens will be cached until shortly before expiry, and one safe refresh may follow a `401`. Local persisted synchronization history, not TrackTik GET behavior, decides between POST and PUT because the hosted mock does not retain data.
+`TrackTikOptions` binds the `TrackTik` section (API base URL, separate token URL, client ID and secret) and is validated on start. `TrackTikEmployeeClient` is a typed `HttpClient` (10-second timeout) that POSTs new employees (`201`) and PUTs existing ones (`200`, without `employeeId`/`startDate`). `TrackTikTokenProvider` is a singleton that requests form-encoded client-credentials tokens without `scope`, caches them until 60 seconds before expiry, and is invalidated when TrackTik answers `401`; the client then retries once. Non-success responses, timeouts, network errors, and token failures become `TrackTikSyncResult.Failure` with a safe message built from the TrackTik error envelope; caller cancellation is rethrown. Local persisted synchronization history, not TrackTik GET behavior, decides between POST and PUT because the hosted mock does not retain data.
 
 ## API Boundary
 
-Controllers are selected over minimal APIs to make transport responsibilities, versioned routes, `ProblemDetails`, and OpenAPI conventions explicit to reviewers. The host currently maps controllers but deliberately contains no employee controller until the API phase.
+Controllers are selected over minimal APIs to make transport responsibilities, versioned routes, `ProblemDetails`, and OpenAPI conventions explicit to reviewers.
+
+- `ProviderEmployeesController` (`POST api/v1/providers/{provider}/employees`) passes the raw JSON body to `SyncEmployeeCommandHandler` and maps each `SyncEmployeeOutcome` to one response: 201/200, 400 `ValidationProblemDetails`, 404, 409, or 502 with `syncStatus`, `employeeId`, `attempts`, `lastError`, and `lastAttemptAt` extensions.
+- `EmployeesController` (`GET api/v1/employees/{provider}/{providerEmployeeId}`) calls `GetEmployeeQueryHandler` and returns `EmployeeResponse` or 404.
+- `EmployeeResponse` is the single transport contract: flat TrackTik field names and lowercase contract strings from the Domain `ToContractValue()` extensions.
+- Asp.Versioning supplies URL-segment versioning and the versioned OpenAPI document (`/openapi/v1.json`).
+- `AddProblemDetails` (with `traceId`), the built-in `UseExceptionHandler` (logs the exception, returns a generic 500 without details), `UseStatusCodePages`, and `[ApiController]` model validation make every error response `application/problem+json`.
+- Composition is `AddApi()` + `AddApplication()` + `AddInfrastructure(...)`; controllers never touch EF Core or providers directly.
 
 ## Testing Strategy
 
 - Domain tests cover employee invariants and synchronization-state transitions.
 - Application tests cover synchronization ordering, immutable command/query results, same-identity coordination, and post-commit event timing with test doubles at application ports.
-- Infrastructure tests cover provider mappings, EF Core model constraints, no-tracking read projections, provider identity separation, and the in-memory publisher. They will also cover HTTP status handling, token reuse and renewal, timeouts, and token failures when the TrackTik adapter is implemented.
+- Infrastructure tests cover provider mappings, EF Core model constraints, no-tracking read projections, provider identity separation, the in-memory publisher, TrackTik options validation, and the TrackTik client through a stub `HttpMessageHandler`: request shape, token reuse and renewal, `401` retry, error envelopes, `429`/`5xx`, timeouts, network failures, and token failures.
 - API integration tests use `WebApplicationFactory` to cover routes, OpenAPI, and `ProblemDetails` behavior.
 - The hosted TrackTik mock will not be used for automated failure tests or high-volume test execution.
 
@@ -118,4 +125,4 @@ All automated tests run through `dotnet test ManagerEmployee.slnx`.
 
 ## Deferred Decisions
 
-The token safety window, unauthorized retry details, API error translation, and logging dimensions are intentionally deferred until the HTTP and transport behavior is designed and tested. `EmployeeSynced` contains the composite provider identity and occurrence time. Its mandatory implementation is in-memory and intentionally not durable; a transactional outbox would be needed for delivery across process failures. ADR 0003 defines direct CQRS, process-local coordination, and persistence conflict behavior. Bonus requirements remain deferred until mandatory requirements are complete.
+Logging dimensions are intentionally deferred. `EmployeeSynced` contains the composite provider identity and occurrence time. Its mandatory implementation is in-memory and intentionally not durable; a transactional outbox would be needed for delivery across process failures. ADR 0003 defines direct CQRS, process-local coordination, and persistence conflict behavior. Bonus requirements remain deferred until mandatory requirements are complete.

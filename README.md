@@ -1,12 +1,24 @@
 # ManagerEmployee
 
-ManagerEmployee is a .NET 10 Employee Sync Service assessment solution. The service layer uses a focused employee aggregate, direct command/query handlers, a Domain-owned write repository, an Application-owned no-tracking read-store port, EF Core persistence, provider validation and mapping, synchronization orchestration, typed post-commit events, SQL Server migrations, and process-local same-identity coordination. Employee API endpoints and the concrete TrackTik HTTP/OAuth client are not implemented yet.
+ManagerEmployee is an ASP.NET Core Web API (.NET 10) that receives employee records from two identity providers, stores them in SQL Server through EF Core, and synchronizes them to the TrackTik REST API (mock) using OAuth2 client credentials.
+
+Each submission is validated, mapped, stored as `pending`, sent to TrackTik, and then stored as `synced` or `failed`. A TrackTik failure returns `502` and keeps the stored record.
+
+## Quick Start
+
+```bash
+cp .env.example .env              # then fill in the three values
+docker compose up --build --wait
+curl -i http://localhost:8080/openapi/v1.json
+```
+
+Then run the `curl` examples in [API](#api): a first POST returns `201`, and the GET returns the employee with `"syncStatus": "synced"`.
 
 ## Prerequisites
 
 - .NET SDK 10.0.300 or a compatible .NET 10 SDK
 - Docker Desktop or another Docker Engine with Compose v2 for the container workflow
-- SQL Server when running outside Compose in a later implementation phase
+- SQL Server when running outside Compose
 - `dotnet-ef` 10.0.x to apply or create migrations
 
 ## Structure
@@ -26,7 +38,7 @@ ManagerEmployee.slnx
 
 The physical project directories are flat under `Source/` and `Tests/`. `ManagerEmployee.slnx` groups them into logical `Apps` and `Services` solution folders.
 
-See `Documentation/architecture.md` for boundaries and the future synchronization contract.
+See `Documentation/architecture.md` for boundaries and the synchronization contract.
 
 ## Restore, Build, and Test
 
@@ -39,24 +51,35 @@ dotnet test ManagerEmployee.slnx --no-build
 dotnet format ManagerEmployee.slnx --verify-no-changes
 ```
 
-`dotnet test ManagerEmployee.slnx` is the single command for all automated tests. The current tests cover employee invariants, shared field policies, both provider mappings, command ordering and state transitions, query behavior, immutable read models, same-identity coordination, event timing and publication, persistence conflicts, no-tracking EF Core reads, model constraints, and the Development OpenAPI document.
+`dotnet test ManagerEmployee.slnx` is the single command for all automated tests. No database, Docker, or network access is needed: TrackTik is replaced by a fake `HttpMessageHandler` or a fake client, and the API integration tests (`WebApplicationFactory`) use the EF Core in-memory provider.
+
+The tests cover:
+
+- both provider mappings, including every status conversion
+- employee invariants and the sync order (pending, then TrackTik, then synced or failed), including POST for new or previously failed employees and PUT after a successful sync
+- event publication only after the `synced` commit
+- persistence conflicts and same-identity coordination
+- the TrackTik client: token reuse, refresh after `401`, timeouts, `5xx`, and token failures
+- the versioned API routes, the ProblemDetails responses (`400`, `404`, `502`), and the OpenAPI document
 
 ## Run Directly
 
 ```bash
+dotnet user-secrets set TrackTik:ClientId "<your-client-id>" --project Source/ManagerEmployee.Api
+dotnet user-secrets set TrackTik:ClientSecret "<your-client-secret>" --project Source/ManagerEmployee.Api
 dotnet run --project Source/ManagerEmployee.Api/ManagerEmployee.Api.csproj
 ```
 
-The Development OpenAPI document is available at `http://localhost:5069/openapi/v1.json` with the generated launch profile. Employee endpoints are not yet exposed.
+The Development environment uses the local SQL Server connection in `appsettings.Development.json` (`localhost,1433`, integrated security). Override it with `dotnet user-secrets set ConnectionStrings:ManagerEmployeeDatabase "<connection string>" --project Source/ManagerEmployee.Api` or the `ConnectionStrings__ManagerEmployeeDatabase` environment variable. Startup fails with a clear message when the TrackTik credentials are missing (see [TrackTik Configuration](#tracktik-configuration)).
+
+The OpenAPI document is available at `http://localhost:5069/openapi/v1.json` with the generated launch profile (`http://localhost:8080/openapi/v1.json` under Compose).
 
 ## Docker Compose
 
-Compose requires values to be supplied through the shell or an untracked `.env` file:
+Compose requires values to be supplied through the shell or an untracked `.env` file. Copy the committed template with `cp .env.example .env` and replace the placeholders:
 
 ```dotenv
 SQLSERVER_SA_PASSWORD=replace-with-a-strong-local-development-password
-TRACKTIK_API_BASE_URL=https://example.invalid/v1
-TRACKTIK_TOKEN_URL=https://example.invalid/oauth/token
 TRACKTIK_CLIENT_ID=replace-with-your-client-id
 TRACKTIK_CLIENT_SECRET=replace-with-your-client-secret
 ```
@@ -75,20 +98,67 @@ The API listens on `http://localhost:8080` by default. Override local host ports
 
 Compose sets `Database__ApplyMigrationsOnStartup=true`, so the API applies all pending EF Core migrations when it starts. No `dotnet-ef` installation is needed for the Compose workflow.
 
-The API consumes `ConnectionStrings:ManagerEmployeeDatabase`; Compose supplies it through `ConnectionStrings__ManagerEmployeeDatabase`. The TrackTik values establish the configuration contract for the later HTTP integration and are not consumed by a concrete client yet.
+The API consumes `ConnectionStrings:ManagerEmployeeDatabase`; Compose supplies it through `ConnectionStrings__ManagerEmployeeDatabase` and passes the TrackTik credentials as `TrackTik__ClientId` and `TrackTik__ClientSecret`. The TrackTik URLs come from `appsettings.json`.
+
+## API
+
+All routes are versioned with a URL segment (`/api/v1`). Every error response is an RFC 9457 `application/problem+json` body with a `traceId`.
+
+| Method and route | Responses |
+|---|---|
+| `POST /api/v1/providers/{provider}/employees` | `201` first time an employee is stored (with `Location`), `200` resubmission, `400` invalid payload (`errors` keyed by provider field), `404` unknown provider, `409` concurrent update, `415` non-JSON body, `502` TrackTik failure (body includes `syncStatus`, `employeeId`, `attempts`, `lastError`, `lastAttemptAt`) |
+| `GET /api/v1/employees/{provider}/{providerEmployeeId}` | `200` stored employee with its TrackTik `employeeId`, `syncStatus`, `attempts`, `lastError`, `lastAttemptAt`; `404` unknown provider or employee |
+
+`{provider}` is `provider1` or `provider2` (lowercase). Each POST body is one employee in that provider's schema.
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/providers/provider1/employees \
+  -H "Content-Type: application/json" \
+  -d '{"emp_id":"P1_001","first_name":"Alice","last_name":"Johnson","email_address":"alice.johnson@provider1.com","phone":"+1-555-0101","job_title":"Security Officer","dept":"Security Operations","hire_date":"2024-01-15","employment_status":"active"}'
+
+curl -i -X POST http://localhost:8080/api/v1/providers/provider2/employees \
+  -H "Content-Type: application/json" \
+  -d '{"employee_number":"P2_001","personal_info":{"given_name":"Carol","family_name":"Davis","email":"carol.davis@provider2.com","mobile":"+1-555-0201"},"work_info":{"role":"Security Guard","division":"Night Shift Security","start_date":"2024-02-01","current_status":"employed"}}'
+
+curl -i http://localhost:8080/api/v1/employees/provider1/P1_001
+```
+
+Example `GET` response:
+
+```json
+{
+  "provider": "provider1",
+  "providerEmployeeId": "P1_001",
+  "employeeId": "provider1-P1_001",
+  "firstName": "Alice",
+  "lastName": "Johnson",
+  "email": "alice.johnson@provider1.com",
+  "phoneNumber": "+1-555-0101",
+  "position": "Security Officer",
+  "department": "Security Operations",
+  "startDate": "2024-01-15",
+  "status": "active",
+  "syncStatus": "synced",
+  "attempts": 1,
+  "lastError": null,
+  "lastAttemptAt": "2026-11-13T01:16:48.45+00:00"
+}
+```
 
 ## TrackTik Configuration
 
-Future TrackTik integration will read these configuration values from environment variables, .NET user secrets, or another untracked provider:
+All TrackTik settings live in the `TrackTik` configuration section and can come from any .NET configuration source (`appsettings.json`, user secrets, environment variables):
 
-| Environment variable | Purpose |
-|---|---|
-| `TRACKTIK_API_BASE_URL` | TrackTik `/v1` API base URL |
-| `TRACKTIK_TOKEN_URL` | Separate OAuth2 token URL |
-| `TRACKTIK_CLIENT_ID` | OAuth2 client ID |
-| `TRACKTIK_CLIENT_SECRET` | OAuth2 client secret |
+| Key | Environment variable | Default |
+|---|---|---|
+| `TrackTik:ApiBaseUrl` | `TrackTik__ApiBaseUrl` | The assessment mock `/v1` URL (in `appsettings.json`) |
+| `TrackTik:TokenUrl` | `TrackTik__TokenUrl` | The assessment mock OAuth2 token URL (in `appsettings.json`); it is not under `/v1` |
+| `TrackTik:ClientId` | `TrackTik__ClientId` | Empty: required |
+| `TrackTik:ClientSecret` | `TrackTik__ClientSecret` | Empty: required |
 
-For direct .NET configuration, the corresponding hierarchical keys will be `TrackTik:ApiBaseUrl`, `TrackTik:TokenUrl`, `TrackTik:ClientId`, and `TrackTik:ClientSecret`. Do not put real values in committed `appsettings*.json` files.
+The settings are validated at startup: both URLs must be absolute and both credentials must be set. Supply the credentials with user secrets (see [Run Directly](#run-directly)) or environment variables, and never put real values in committed `appsettings*.json` files.
+
+The client requests a token with a form-encoded `client_credentials` grant (no `scope`), caches it until 60 seconds before `expires_in`, and on a `401` refreshes the token and retries once. TrackTik errors, timeouts (10 seconds), and token failures are recorded as `failed` with a safe `lastError`, for example `TrackTik returned 400 VALIDATION_ERROR: Invalid employee data (email: Invalid email format)`; credentials and tokens are never included.
 
 ## Database Migrations
 
@@ -98,17 +168,15 @@ Install the EF Core command-line tool matching the repository package version:
 dotnet tool install --global dotnet-ef --version 10.0.15
 ```
 
-Migrations are committed under `Source/ManagerEmployee.Infrastructure/Persistence/Migrations`. Supply `ConnectionStrings__ManagerEmployeeDatabase` through the environment when the default local integrated-security connection is not appropriate, then apply migrations with:
+Migrations are committed under `Source/ManagerEmployee.Infrastructure/Persistence/Migrations`. The API is the startup project, so `dotnet ef` uses the same configuration as `dotnet run` (the Development connection string, user secrets, or `ConnectionStrings__ManagerEmployeeDatabase`):
 
 ```bash
 dotnet ef database update \
   --project Source/ManagerEmployee.Infrastructure/ManagerEmployee.Infrastructure.csproj \
-  --startup-project Source/ManagerEmployee.Infrastructure/ManagerEmployee.Infrastructure.csproj
+  --startup-project Source/ManagerEmployee.Api/ManagerEmployee.Api.csproj
 ```
 
 Alternatively, set `Database__ApplyMigrationsOnStartup=true` (or `Database:ApplyMigrationsOnStartup` in user secrets) before `dotnet run` to have the API apply migrations at startup, as Compose does.
-
-The Infrastructure project supplies a design-time context factory. At runtime, the API remains the composition root and registers the same SQL Server context and employee repository.
 
 ## Assumptions and Deferred Work
 
@@ -116,8 +184,14 @@ The Infrastructure project supplies a design-time context factory. At runtime, t
 - The architecture stays lightweight: no mediator, generic repository, AutoMapper, or event-bus framework is introduced without a concrete need.
 - Commands and queries use directly injected handlers; no command/query dispatcher or marker hierarchy is used.
 - Mandatory behavior is implemented and verified before any bonus requirement.
-- The persistence representation and initial concurrency safeguards are documented in ADRs 0002 and 0003. Same-identity requests are serialized within one process; cross-instance races return an explicit persistence-conflict outcome. Token refresh details and observability dimensions remain for later implementation prompts.
-- Provider DTOs remain internal to their integration projects; Application receives only normalized records and Domain receives only domain values.
+- The persistence representation and initial concurrency safeguards are documented in ADRs 0002 and 0003. Same-identity requests are serialized within one process; cross-instance races return an explicit persistence-conflict outcome. Observability (structured logging dimensions and metrics) is not implemented yet.
+- Provider DTOs are `internal` to `Infrastructure/Providers`; Application receives only normalized records and Domain receives only domain values.
 - Domain owns the composite employee identity, aggregate repository abstraction, field policy, cohesive profile/attempt models, and typed `EmployeeSynced` event; Infrastructure owns the EF Core write and read adapters.
 - The aggregate creates `EmployeeSynced`, and Application publishes it in memory only after the `synced` commit. Durable delivery across process failures would require an outbox and is outside the mandatory in-memory implementation.
-- The employee-sync API and concrete TrackTik/OAuth workflow remain incomplete even though provider mapping and application orchestration now exist.
+- TrackTik calls are not retried automatically beyond the single token refresh after `401`; a failed employee is retried by resubmitting it, as the contract describes.
+- A missing employment status (`employment_status` / `work_info.current_status`) is rejected with `400`: the provider schemas make it optional, but TrackTik requires `status`.
+- Provider route values are exact and lowercase; anything else returns `404`.
+- `POST` returns `201` when the employee is stored for the first time and `200` on resubmission, regardless of the TrackTik POST/PUT choice.
+- A concurrent update detected by the database returns `409`. Same-identity requests are serialized only within one API instance. With several instances, a conflict on the final `synced` commit after TrackTik accepted a POST leaves local state saying the employee was never created, so the next submission POSTs again. Removing that window would need a distributed lock or an outbox, which is outside the mandatory scope.
+- One submission makes at most four sequential TrackTik calls (token, request, and one token refresh plus retry after `401`), each with a 10-second timeout.
+- Once the `pending` commit succeeds, the sync finishes even if the client disconnects, so the stored status never stays `pending` after TrackTik has accepted the employee.
