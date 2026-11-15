@@ -1,0 +1,1488 @@
+{
+  "info": {
+    "name": "ManagerEmployee end-to-end",
+    "description": "End-to-end checks of the Employee Sync Service against a local WireMock TrackTik stub. Start the stack with docker-compose.postman.yml (see README), then run the whole collection in order.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Setup",
+      "description": "Clears the stub request log and creates a per-run id so reruns never collide.",
+      "item": [
+        {
+          "name": "Reset TrackTik stub request log",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('runId', Date.now().toString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('stub log cleared', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{stubUrl}}/__admin/requests"
+          }
+        },
+        {
+          "name": "OpenAPI document lists versioned routes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('200 with both /api/v1 employee routes', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const paths = Object.keys(pm.response.json().paths);",
+                  "  pm.expect(paths).to.include('/api/v1/providers/{provider}/employees');",
+                  "  pm.expect(paths).to.include('/api/v1/employees/{provider}/{providerEmployeeId}');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/openapi/v1.json",
+            "description": "Covers: API-001, API-002"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Provider1 create (POST to TrackTik)",
+      "description": "A brand-new employee is forwarded with TrackTik POST.",
+      "item": [
+        {
+          "name": "Submit new provider1 employee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const id = 'provider1-P1-' + run;",
+                  "const body = pm.response.json();",
+                  "pm.test('201 Created with Location', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.headers.get('Location')).to.include('/api/v1/employees/provider1/P1-' + run);",
+                  "});",
+                  "pm.test('maps every provider1 field to TrackTik names', () => {",
+                  "  pm.expect(body).to.include({",
+                  "    provider: 'provider1', providerEmployeeId: 'P1-' + run, employeeId: id,",
+                  "    firstName: 'Alice', lastName: 'Johnson', email: 'alice.johnson@provider1.com',",
+                  "    phoneNumber: '+1-555-0101', position: 'Security Officer', department: 'Security Operations',",
+                  "    startDate: '2024-01-15', status: 'active'",
+                  "  });",
+                  "});",
+                  "pm.test('synced after one attempt with no error', () => {",
+                  "  pm.expect(body.syncStatus).to.equal('synced');",
+                  "  pm.expect(body.attempts).to.equal(1);",
+                  "  pm.expect(body.lastError).to.equal(null);",
+                  "  pm.expect(body.lastAttemptAt).to.be.a('string');",
+                  "});",
+                  "stubCount(createdIn(id), 'TrackTik received exactly one POST /employees', c => pm.expect(c).to.equal(1));",
+                  "stubCount(updatedIn(id), 'TrackTik received no PUT', c => pm.expect(c).to.equal(0));",
+                  "stubCount({ ...createdIn(id), headers: { Authorization: { matches: 'Bearer .+' } } },",
+                  "  'POST carried a Bearer token', c => pm.expect(c).to.equal(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-{{runId}}\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"alice.johnson@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-001, FR-002, FR-007, FR-012, FR-016, MAP-001..009, SYNC-005..008, HTTP-009"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Provider1 resubmit (PUT to TrackTik)",
+      "description": "Resubmitting a synced employee updates the row and uses TrackTik PUT.",
+      "item": [
+        {
+          "name": "Resubmit same provider1 employee with new job title",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const id = 'provider1-P1-' + run;",
+                  "const body = pm.response.json();",
+                  "pm.test('200 OK (update, not create)', () => pm.response.to.have.status(200));",
+                  "pm.test('updated in place: new position, attempts 2, synced', () => {",
+                  "  pm.expect(body.position).to.equal('Senior Security Officer');",
+                  "  pm.expect(body.attempts).to.equal(2);",
+                  "  pm.expect(body.syncStatus).to.equal('synced');",
+                  "});",
+                  "stubCount(updatedIn(id), 'TrackTik received one PUT /employees/{id}', c => pm.expect(c).to.equal(1));",
+                  "stubCount(createdIn(id), 'TrackTik still received only the first POST', c => pm.expect(c).to.equal(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-{{runId}}\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"alice.johnson@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Senior Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-014, FR-015, FR-017, FR-018, SYNC-006, SYNC-012"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Get employee",
+      "description": "",
+      "item": [
+        {
+          "name": "Get provider1 employee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns every FR-009 field', () => {",
+                  "  ['provider', 'providerEmployeeId', 'employeeId', 'firstName', 'lastName', 'email', 'phoneNumber',",
+                  "   'position', 'department', 'startDate', 'status', 'syncStatus', 'attempts', 'lastError', 'lastAttemptAt']",
+                  "    .forEach(f => pm.expect(body).to.have.property(f));",
+                  "  pm.expect(body.employeeId).to.equal('provider1-P1-' + run);",
+                  "  pm.expect(body.position).to.equal('Senior Security Officer');",
+                  "  pm.expect(body.attempts).to.equal(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider1/P1-{{runId}}",
+            "description": "Covers: FR-008, FR-009"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Provider2 status mapping",
+      "description": "",
+      "item": [
+        {
+          "name": "Provider2 employed -> active",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('maps nested provider2 fields', () => {",
+                  "  pm.expect(body).to.include({",
+                  "    provider: 'provider2', employeeId: 'provider2-P2-EMP-' + run,",
+                  "    firstName: 'Carol', lastName: 'Davis', email: 'carol.davis@provider2.com', phoneNumber: '+1-555-0201',",
+                  "    position: 'Security Guard', department: 'Night Shift Security', startDate: '2024-02-01',",
+                  "    status: 'active', syncStatus: 'synced'",
+                  "  });",
+                  "});",
+                  "stubCount(createdIn('provider2-P2-EMP-' + run), 'TrackTik received one POST', c => pm.expect(c).to.equal(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider2/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_number\": \"P2-EMP-{{runId}}\",\n  \"personal_info\": {\n    \"given_name\": \"Carol\",\n    \"family_name\": \"Davis\",\n    \"email\": \"carol.davis@provider2.com\",\n    \"mobile\": \"+1-555-0201\"\n  },\n  \"work_info\": {\n    \"role\": \"Security Guard\",\n    \"division\": \"Night Shift Security\",\n    \"start_date\": \"2024-02-01\",\n    \"current_status\": \"employed\"\n  }\n}"
+            },
+            "description": "Covers: FR-003, MAP-010..020"
+          }
+        },
+        {
+          "name": "Provider2 on_leave -> inactive",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('maps nested provider2 fields', () => {",
+                  "  pm.expect(body).to.include({",
+                  "    provider: 'provider2', employeeId: 'provider2-P2-LEAVE-' + run,",
+                  "    firstName: 'Carol', lastName: 'Davis', email: 'carol.davis@provider2.com', phoneNumber: '+1-555-0201',",
+                  "    position: 'Security Guard', department: 'Night Shift Security', startDate: '2024-02-01',",
+                  "    status: 'inactive', syncStatus: 'synced'",
+                  "  });",
+                  "});",
+                  "stubCount(createdIn('provider2-P2-LEAVE-' + run), 'TrackTik received one POST', c => pm.expect(c).to.equal(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider2/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_number\": \"P2-LEAVE-{{runId}}\",\n  \"personal_info\": {\n    \"given_name\": \"Carol\",\n    \"family_name\": \"Davis\",\n    \"email\": \"carol.davis@provider2.com\",\n    \"mobile\": \"+1-555-0201\"\n  },\n  \"work_info\": {\n    \"role\": \"Security Guard\",\n    \"division\": \"Night Shift Security\",\n    \"start_date\": \"2024-02-01\",\n    \"current_status\": \"on_leave\"\n  }\n}"
+            },
+            "description": "Covers: FR-003, MAP-010..020"
+          }
+        },
+        {
+          "name": "Provider2 terminated -> terminated",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('maps nested provider2 fields', () => {",
+                  "  pm.expect(body).to.include({",
+                  "    provider: 'provider2', employeeId: 'provider2-P2-TERM-' + run,",
+                  "    firstName: 'Carol', lastName: 'Davis', email: 'carol.davis@provider2.com', phoneNumber: '+1-555-0201',",
+                  "    position: 'Security Guard', department: 'Night Shift Security', startDate: '2024-02-01',",
+                  "    status: 'terminated', syncStatus: 'synced'",
+                  "  });",
+                  "});",
+                  "stubCount(createdIn('provider2-P2-TERM-' + run), 'TrackTik received one POST', c => pm.expect(c).to.equal(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider2/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_number\": \"P2-TERM-{{runId}}\",\n  \"personal_info\": {\n    \"given_name\": \"Carol\",\n    \"family_name\": \"Davis\",\n    \"email\": \"carol.davis@provider2.com\",\n    \"mobile\": \"+1-555-0201\"\n  },\n  \"work_info\": {\n    \"role\": \"Security Guard\",\n    \"division\": \"Night Shift Security\",\n    \"start_date\": \"2024-02-01\",\n    \"current_status\": \"terminated\"\n  }\n}"
+            },
+            "description": "Covers: FR-003, MAP-010..020"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Same email, different provider",
+      "description": "Records are never merged across providers, even by email.",
+      "item": [
+        {
+          "name": "Provider2 employee reusing the provider1 email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('201 Created as a separate employee', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.json().employeeId).to.equal('provider2-P2-SAME-' + run);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider2/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_number\": \"P2-SAME-{{runId}}\",\n  \"personal_info\": {\n    \"given_name\": \"Alice\",\n    \"family_name\": \"Johnson\",\n    \"email\": \"alice.johnson@provider1.com\",\n    \"mobile\": \"+1-555-0201\"\n  },\n  \"work_info\": {\n    \"role\": \"Security Guard\",\n    \"division\": \"Night Shift Security\",\n    \"start_date\": \"2024-02-01\",\n    \"current_status\": \"employed\"\n  }\n}"
+            },
+            "description": "Covers: FR-011, FR-013"
+          }
+        },
+        {
+          "name": "Provider1 record is unchanged",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('provider1 record keeps its own identity and data', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.provider).to.equal('provider1');",
+                  "  pm.expect(body.position).to.equal('Senior Security Officer');",
+                  "  pm.expect(body.attempts).to.equal(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider1/P1-{{runId}}",
+            "description": "Covers: FR-013"
+          }
+        },
+        {
+          "name": "Provider2 record is retrievable on its own",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('provider2 record exists separately', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.include({ provider: 'provider2', email: 'alice.johnson@provider1.com', attempts: 1 });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider2/P2-SAME-{{runId}}",
+            "description": "Covers: FR-013"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Validation (nothing persisted or forwarded)",
+      "description": "",
+      "item": [
+        {
+          "name": "Provider1 invalid email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(400);",
+                  "pm.test('error is keyed by provider field email_address', () => pm.expect(pm.response.json().errors).to.have.property('email_address'));",
+                  "stubCount(createdIn('provider1-P1-BADEMAIL-' + run), 'nothing was forwarded to TrackTik', c => pm.expect(c).to.equal(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-BADEMAIL-{{runId}}\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"not-an-email\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-005, FR-006, MAP-021..024, SEC-007, TEST-008"
+          }
+        },
+        {
+          "name": "Provider1 invalid email: not persisted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(404);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider1/P1-BADEMAIL-{{runId}}",
+            "description": "Covers: FR-006"
+          }
+        },
+        {
+          "name": "Provider2 missing given_name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(400);",
+                  "pm.test('error is keyed by provider field personal_info.given_name', () => pm.expect(pm.response.json().errors).to.have.property('personal_info.given_name'));",
+                  "stubCount(createdIn('provider2-P2-NONAME-' + run), 'nothing was forwarded to TrackTik', c => pm.expect(c).to.equal(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider2/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_number\": \"P2-NONAME-{{runId}}\",\n  \"personal_info\": {\n    \"family_name\": \"Davis\",\n    \"email\": \"carol.davis@provider2.com\",\n    \"mobile\": \"+1-555-0201\"\n  },\n  \"work_info\": {\n    \"role\": \"Security Guard\",\n    \"division\": \"Night Shift Security\",\n    \"start_date\": \"2024-02-01\",\n    \"current_status\": \"employed\"\n  }\n}"
+            },
+            "description": "Covers: FR-005, FR-006, MAP-021..024, SEC-007, TEST-008"
+          }
+        },
+        {
+          "name": "Provider2 missing given_name: not persisted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(404);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider2/P2-NONAME-{{runId}}",
+            "description": "Covers: FR-006"
+          }
+        },
+        {
+          "name": "Provider1 invalid employment_status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(400);",
+                  "pm.test('error is keyed by provider field employment_status', () => pm.expect(pm.response.json().errors).to.have.property('employment_status'));",
+                  "stubCount(createdIn('provider1-P1-BADSTATUS-' + run), 'nothing was forwarded to TrackTik', c => pm.expect(c).to.equal(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-BADSTATUS-{{runId}}\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"alice.johnson@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"retired\"\n}"
+            },
+            "description": "Covers: FR-005, FR-006, MAP-021..024, SEC-007, TEST-008"
+          }
+        },
+        {
+          "name": "Provider1 invalid employment_status: not persisted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(404);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider1/P1-BADSTATUS-{{runId}}",
+            "description": "Covers: FR-006"
+          }
+        },
+        {
+          "name": "Provider1 hire_date not YYYY-MM-DD",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(400);",
+                  "pm.test('error is keyed by provider field hire_date', () => pm.expect(pm.response.json().errors).to.have.property('hire_date'));",
+                  "stubCount(createdIn('provider1-P1-BADDATE-' + run), 'nothing was forwarded to TrackTik', c => pm.expect(c).to.equal(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-BADDATE-{{runId}}\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"alice.johnson@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"15/01/2024\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-005, FR-006, MAP-021..024, SEC-007, TEST-008"
+          }
+        },
+        {
+          "name": "Provider1 hire_date not YYYY-MM-DD: not persisted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(404);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider1/P1-BADDATE-{{runId}}",
+            "description": "Covers: FR-006"
+          }
+        },
+        {
+          "name": "Provider2 invalid current_status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(400);",
+                  "pm.test('error is keyed by provider field work_info.current_status', () => pm.expect(pm.response.json().errors).to.have.property('work_info.current_status'));",
+                  "stubCount(createdIn('provider2-P2-BADSTATUS-' + run), 'nothing was forwarded to TrackTik', c => pm.expect(c).to.equal(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider2/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_number\": \"P2-BADSTATUS-{{runId}}\",\n  \"personal_info\": {\n    \"given_name\": \"Carol\",\n    \"family_name\": \"Davis\",\n    \"email\": \"carol.davis@provider2.com\",\n    \"mobile\": \"+1-555-0201\"\n  },\n  \"work_info\": {\n    \"role\": \"Security Guard\",\n    \"division\": \"Night Shift Security\",\n    \"start_date\": \"2024-02-01\",\n    \"current_status\": \"contractor\"\n  }\n}"
+            },
+            "description": "Covers: FR-005, FR-006, MAP-021..024, SEC-007, TEST-008"
+          }
+        },
+        {
+          "name": "Provider2 invalid current_status: not persisted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(404);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider2/P2-BADSTATUS-{{runId}}",
+            "description": "Covers: FR-006"
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Error responses",
+      "description": "",
+      "item": [
+        {
+          "name": "Unknown provider on submit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(404);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider9/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P9-{{runId}}\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"alice.johnson@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-004, API-003, API-005"
+          }
+        },
+        {
+          "name": "Unknown provider on get",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(404);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider9/P9-{{runId}}",
+            "description": "Covers: FR-004"
+          }
+        },
+        {
+          "name": "Missing employee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(404);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider1/DOES-NOT-EXIST-{{runId}}",
+            "description": "Covers: FR-010, API-003"
+          }
+        },
+        {
+          "name": "Unsupported content type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(415);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "emp_id=P1"
+            },
+            "description": "Covers: API-003, API-005"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 TrackTik failure, then retry",
+      "description": "The stub returns 500 for any email containing \"tracktik-fail\".",
+      "item": [
+        {
+          "name": "New employee: TrackTik fails -> 502",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(502);",
+                  "const body = pm.response.json();",
+                  "pm.test('problem carries sync status failed, attempts 1, useful lastError', () => {",
+                  "  pm.expect(body.syncStatus).to.equal('failed');",
+                  "  pm.expect(body.attempts).to.equal(1);",
+                  "  pm.expect(body.employeeId).to.equal('provider1-P1-FAIL-' + run);",
+                  "  pm.expect(body.lastError).to.include('500');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-FAIL-{{runId}}\",\n  \"first_name\": \"Erin\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"erin.tracktik-fail@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-007, SYNC-009, SYNC-010, SYNC-011, HTTP-011"
+          }
+        },
+        {
+          "name": "Failed employee is persisted as failed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('row kept with syncStatus failed', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.include({ syncStatus: 'failed', attempts: 1, email: 'erin.tracktik-fail@provider1.com' });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/employees/provider1/P1-FAIL-{{runId}}",
+            "description": "Covers: SYNC-009, SYNC-010"
+          }
+        },
+        {
+          "name": "Resubmit with fixed data -> synced via POST",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const id = 'provider1-P1-FAIL-' + run;",
+                  "const body = pm.response.json();",
+                  "pm.test('200 OK, synced, attempts 2, error cleared', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(body).to.include({ syncStatus: 'synced', attempts: 2, lastError: null, email: 'erin.fixed@provider1.com' });",
+                  "});",
+                  "stubCount(createdIn(id), 'never-created employee was retried with POST (2 POSTs total)', c => pm.expect(c).to.equal(2));",
+                  "stubCount(updatedIn(id), 'no PUT was sent', c => pm.expect(c).to.equal(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-FAIL-{{runId}}\",\n  \"first_name\": \"Erin\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"erin.fixed@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-015, FR-016, SYNC-008"
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Failure after success keeps using PUT",
+      "description": "Once created in TrackTik, an employee is always updated with PUT, even after a failed update.",
+      "item": [
+        {
+          "name": "Synced employee: TrackTik update fails -> 502",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "expectProblem(502);",
+                  "pm.test('failed on attempt 3', () => pm.expect(pm.response.json()).to.include({ syncStatus: 'failed', attempts: 3 }));",
+                  "stubCount(updatedIn('provider1-P1-' + run), 'failed update was sent as PUT (2 PUTs so far)', c => pm.expect(c).to.equal(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-{{runId}}\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"alice.tracktik-fail@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Senior Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-017, SYNC-009, SYNC-011"
+          }
+        },
+        {
+          "name": "Resubmit after failed update -> PUT again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const id = 'provider1-P1-' + run;",
+                  "pm.test('200 OK, synced, attempts 4, error cleared', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.include({ syncStatus: 'synced', attempts: 4, lastError: null });",
+                  "});",
+                  "stubCount(updatedIn(id), 'still PUT after the failed update (3 PUTs)', c => pm.expect(c).to.equal(3));",
+                  "stubCount(createdIn(id), 'never POSTed again', c => pm.expect(c).to.equal(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/providers/provider1/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emp_id\": \"P1-{{runId}}\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Johnson\",\n  \"email_address\": \"alice.johnson@provider1.com\",\n  \"phone\": \"+1-555-0101\",\n  \"job_title\": \"Senior Security Officer\",\n  \"dept\": \"Security Operations\",\n  \"hire_date\": \"2024-01-15\",\n  \"employment_status\": \"active\"\n}"
+            },
+            "description": "Covers: FR-015, FR-017, SYNC-008"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Token handling",
+      "description": "Inspects the OAuth token requests the API sent to the stub during this run.",
+      "item": [
+        {
+          "name": "Token requests in this run",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const total = pm.response.json().count;",
+                  "pm.test('token cached: at most one token request across the whole run', () => pm.expect(total).to.be.at.most(1));",
+                  "stubCount({ method: 'POST', urlPath: '/oauth/token',",
+                  "  headers: { 'Content-Type': { contains: 'application/x-www-form-urlencoded' } },",
+                  "  bodyPatterns: [{ contains: 'grant_type=client_credentials' }] },",
+                  "  'token requests are form-encoded client_credentials', c => pm.expect(c).to.equal(total));",
+                  "stubCount({ method: 'POST', urlPath: '/oauth/token', bodyPatterns: [{ contains: 'scope=' }] },",
+                  "  'token requests omit scope', c => pm.expect(c).to.equal(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{stubUrl}}/__admin/requests/count",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"POST\",\n  \"urlPath\": \"/oauth/token\"\n}"
+            },
+            "description": "Covers: HTTP-005, HTTP-006, HTTP-007"
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Sync status report",
+      "description": "",
+      "item": [
+        {
+          "name": "Employee counts by sync status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.collectionVariables.get('runId');",
+                  "const stubCount = (criteria, name, check) => pm.sendRequest({",
+                  "  url: pm.variables.get('stubUrl') + '/__admin/requests/count',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify(criteria) }",
+                  "}, (err, res) => pm.test(name, () => { pm.expect(err).to.equal(null); check(res.json().count); }));",
+                  "const createdIn = id => ({ method: 'POST', urlPath: '/v1/employees', bodyPatterns: [{ matchesJsonPath: { expression: '$.employeeId', equalTo: id } }] });",
+                  "const updatedIn = id => ({ method: 'PUT', urlPath: '/v1/employees/' + id });",
+                  "const expectProblem = status => pm.test('returns ' + status + ' problem+json with traceId', () => {",
+                  "  pm.response.to.have.status(status);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().traceId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('200 OK with consistent counts', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(body.total).to.equal(body.pending + body.synced + body.failed);",
+                  "  pm.expect(body.synced).to.be.at.least(6);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/reports/sync-status",
+            "description": "Covers: BONUS-003"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "stubUrl",
+      "value": "http://localhost:8089"
+    },
+    {
+      "key": "runId",
+      "value": ""
+    }
+  ]
+}

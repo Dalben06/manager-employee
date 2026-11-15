@@ -1,0 +1,13 @@
+{
+  "name": "manager-employee-postman",
+  "private": true,
+  "description": "Postman/Newman end-to-end and load checks for the Employee Sync Service (run against docker-compose.postman.yml).",
+  "scripts": {
+    "e2e": "newman run ManagerEmployee.postman_collection.json -e ManagerEmployee.local.postman_environment.json",
+    "load": "node load/run-load.js"
+  },
+  "devDependencies": {
+    "newman": "6.2.1",
+    "newman-reporter-htmlextra": "1.23.1"
+  }
+}

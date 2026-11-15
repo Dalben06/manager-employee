@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  POSTMAN_COMPOSE: >-
+    docker compose -p me-postman --env-file postman/postman.env
+    -f docker-compose.yml -f docker-compose.postman.yml
+
+jobs:
+  build-and-test:
+    name: Build, test and format
+    # The SQL Server image is Linux x64 only; ubuntu-latest provides Docker for the Testcontainers tests.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore ManagerEmployee.slnx
+
+      - name: Build
+        run: dotnet build ManagerEmployee.slnx --no-restore
+
+      - name: Test (unit, integration, SQL Server containers)
+        run: dotnet test ManagerEmployee.slnx --no-build --logger trx --results-directory TestResults
+
+      - name: Test summary
+        if: always()
+        # Fails the job if the SQL Server container tests were skipped (e.g. Docker unavailable).
+        run: python3 .github/scripts/summarize-trx.py TestResults manageremployee.api.containertests
+
+      - name: Format check
+        run: dotnet format ManagerEmployee.slnx --verify-no-changes
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/
+          if-no-files-found: warn
+
+  e2e:
+    name: Postman E2E and load (WireMock TrackTik)
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: postman/package-lock.json
+
+      - name: Start API, SQL Server and TrackTik stub
+        run: $POSTMAN_COMPOSE up --build --wait --wait-timeout 300
+
+      - name: Install Newman
+        working-directory: postman
+        run: npm ci --no-fund --no-audit
+
+      - name: Postman end-to-end collection
+        working-directory: postman
+        run: npm run e2e
+
+      - name: Newman load test
+        working-directory: postman
+        run: npm run load -- --count 500 --workers 4
+
+      - name: Container logs
+        if: failure()
+        run: $POSTMAN_COMPOSE logs --no-color sqlserver api tracktik-stub
+
+      - name: Upload load reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-reports
+          path: postman/load/out/
+          if-no-files-found: ignore
+
+      - name: Stop stack
+        if: always()
+        run: $POSTMAN_COMPOSE down -v
