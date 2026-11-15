@@ -40,3 +40,9 @@ Thumbs.db
 
 # Agent execution scratch data
 .superpowers/
+
+# Postman/Newman tooling and load-test output
+postman/node_modules/
+postman/load/out/
+postman/.postman/
+postman/postman/

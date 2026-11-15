@@ -1,0 +1,20 @@
+# Postman end-to-end override: replaces TrackTik with a local WireMock stub so the
+# collection in postman/ runs without real OAuth credentials. Use with postman/postman.env:
+#   docker compose -p me-postman --env-file postman/postman.env \
+#     -f docker-compose.yml -f docker-compose.postman.yml up --build --wait
+services:
+  api:
+    environment:
+      TrackTik__ApiBaseUrl: http://tracktik-stub:8080/v1
+      TrackTik__TokenUrl: http://tracktik-stub:8080/oauth/token
+    depends_on:
+      tracktik-stub:
+        condition: service_started
+
+  tracktik-stub:
+    image: wiremock/wiremock:3.9.1
+    command: ["--disable-banner", "--max-request-journal-entries=2000"]
+    ports:
+      - "${STUB_PORT:-8089}:8080"
+    volumes:
+      - ./postman/wiremock:/home/wiremock:ro

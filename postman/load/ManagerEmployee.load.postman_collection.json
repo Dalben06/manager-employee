@@ -1,0 +1,135 @@
+{
+  "info": {
+    "name": "ManagerEmployee load",
+    "description": "Data-driven volume test. Each iteration (one data row) submits an employee, reads it back, and resubmits it. Rows are 'ok' (TrackTik stub accepts), 'fail' (stub returns 500) or 'invalid' (bad email, rejected with 400). Run through postman/load/run-load.js, which generates the data and passes runId.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Builds the provider payload for this iteration's data row.",
+          "const d = pm.iterationData.toObject();",
+          "const runId = pm.variables.get('runId');",
+          "const providerEmployeeId = (d.provider === 'provider1' ? 'P1' : 'P2') + '-LOAD-' + runId + '-' + d.seq;",
+          "const email = d.kind === 'invalid' ? 'not-an-email'",
+          "  : d.kind === 'fail' ? 'load' + d.seq + '.tracktik-fail@example.com'",
+          "  : 'load' + d.seq + '@example.com';",
+          "const title = pm.info.requestName.startsWith('Resubmit') ? 'Lead Officer' : 'Officer';",
+          "const p2Status = { active: 'employed', inactive: 'on_leave', terminated: 'terminated' }[d.status];",
+          "const body = d.provider === 'provider1'",
+          "  ? { emp_id: providerEmployeeId, first_name: 'Load', last_name: 'User' + d.seq, email_address: email,",
+          "      phone: '+1-555-' + String(d.seq % 10000).padStart(4, '0'), job_title: title, dept: 'Load Testing',",
+          "      hire_date: '2024-01-15', employment_status: d.status }",
+          "  : { employee_number: providerEmployeeId,",
+          "      personal_info: { given_name: 'Load', family_name: 'User' + d.seq, email: email, mobile: '+1-555-' + String(d.seq % 10000).padStart(4, '0') },",
+          "      work_info: { role: title, division: 'Load Testing', start_date: '2024-01-15', current_status: p2Status } };",
+          "pm.variables.set('providerEmployeeId', providerEmployeeId);",
+          "pm.variables.set('body', JSON.stringify(body));"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const maxMs = Number(pm.variables.get('maxMs') || 2000);",
+          "pm.test('responds within ' + maxMs + ' ms', () => pm.expect(pm.response.responseTime).to.be.below(maxMs));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Submit employee",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{{body}}" },
+        "url": "{{baseUrl}}/api/v1/providers/{{provider}}/employees"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const d = pm.iterationData.toObject();",
+              "const expected = { ok: 201, fail: 502, invalid: 400 }[d.kind];",
+              "pm.test(d.kind + ' row returns ' + expected, () => pm.response.to.have.status(expected));",
+              "if (d.kind !== 'invalid') {",
+              "  const body = pm.response.json();",
+              "  pm.test('sync state after first attempt', () => {",
+              "    pm.expect(body.syncStatus).to.equal(d.kind === 'ok' ? 'synced' : 'failed');",
+              "    pm.expect(body.attempts).to.equal(1);",
+              "    pm.expect(body.employeeId).to.equal(d.provider + '-' + pm.variables.get('providerEmployeeId'));",
+              "  });",
+              "  if (d.kind === 'ok') pm.test('status mapped to ' + d.status, () => pm.expect(body.status).to.equal(d.status));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get employee",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/employees/{{provider}}/{{providerEmployeeId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const d = pm.iterationData.toObject();",
+              "if (d.kind === 'invalid') {",
+              "  pm.test('invalid row was not persisted', () => pm.response.to.have.status(404));",
+              "} else {",
+              "  pm.test('persisted row is readable', () => pm.response.to.have.status(200));",
+              "  pm.test('persisted sync state', () => pm.expect(pm.response.json()).to.include({",
+              "    syncStatus: d.kind === 'ok' ? 'synced' : 'failed', attempts: 1, position: 'Officer' }));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Resubmit employee",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{{body}}" },
+        "url": "{{baseUrl}}/api/v1/providers/{{provider}}/employees"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const d = pm.iterationData.toObject();",
+              "const expected = { ok: 200, fail: 502, invalid: 400 }[d.kind];",
+              "pm.test(d.kind + ' resubmission returns ' + expected, () => pm.response.to.have.status(expected));",
+              "if (d.kind !== 'invalid') {",
+              "  pm.test('same row updated: attempts 2, new position', () => pm.expect(pm.response.json()).to.include({",
+              "    syncStatus: d.kind === 'ok' ? 'synced' : 'failed', attempts: 2,",
+              "    ...(d.kind === 'ok' ? { position: 'Lead Officer' } : {}) }));",
+              "}"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8081" },
+    { "key": "maxMs", "value": "2000" }
+  ]
+}
