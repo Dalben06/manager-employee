@@ -11,7 +11,7 @@ Every submission follows the same path: **validate → map → store as `pending
 ## Quick Start
 
 ```bash
-cp .env.example .env              # then fill in the three values
+cp .env.example .env              # then fill in TRACKTIK_CLIENT_ID and TRACKTIK_CLIENT_SECRET
 docker compose up --build --wait
 curl -i http://localhost:8080/openapi/v1.json
 ```
@@ -32,10 +32,10 @@ To try the service without TrackTik credentials, use the Postman stack with a lo
 
 ### With Docker Compose
 
-Compose reads its values from the shell or from an untracked `.env` file. Copy the committed template with `cp .env.example .env` and replace the placeholders:
+Compose reads its values from the shell or from an untracked `.env` file. Copy the committed template with `cp .env.example .env` and fill in your TrackTik credentials. The SA password is a clearly marked local-only default for the throwaway database container and already meets SQL Server's complexity rules:
 
 ```dotenv
-SQLSERVER_SA_PASSWORD=replace-with-a-strong-local-development-password
+SQLSERVER_SA_PASSWORD=LocalOnly_Dev_2026!   # local-only default, not a secret
 TRACKTIK_CLIENT_ID=replace-with-your-client-id
 TRACKTIK_CLIENT_SECRET=replace-with-your-client-secret
 ```
