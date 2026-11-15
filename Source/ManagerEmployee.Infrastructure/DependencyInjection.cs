@@ -45,6 +45,7 @@ public static class DependencyInjection
             options => options.UseSqlServer(connectionString));
         services.AddScoped<IEmployeeRepository, EmployeeRepository>();
         services.AddScoped<IEmployeeReadStore, EmployeeReadStore>();
+        services.AddScoped<IEmployeeSyncStatusReportReader, EmployeeSyncStatusReportReader>();
         services.AddScoped<IEmployeeSyncedEventPublisher, InMemoryEmployeeSyncedEventPublisher>();
         services.AddSingleton<IProviderEmployeeMapper, Provider1EmployeeMapper>();
         services.AddSingleton<IProviderEmployeeMapper, Provider2EmployeeMapper>();

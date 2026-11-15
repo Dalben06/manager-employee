@@ -26,6 +26,8 @@ public sealed class OpenApiTests
         Assert.IsTrue(submit.TryGetProperty("post", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/v1/employees/{provider}/{providerEmployeeId}", out var get));
         Assert.IsTrue(get.TryGetProperty("get", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/v1/reports/sync-status", out var report));
+        Assert.IsTrue(report.TryGetProperty("get", out _));
     }
 
     [TestMethod]

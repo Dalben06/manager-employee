@@ -34,7 +34,7 @@ Owns the directly injected synchronization command handler and employee query ha
 
 ### ManagerEmployee.Infrastructure
 
-Implements the EF Core context, tracked employee write repository, no-tracking employee read store, SQL Server mapping, migrations under `Persistence/Migrations`, expected conflict translation, the mandatory in-memory event publisher, and the TrackTik HTTP client with OAuth token acquisition and caching.
+Implements the EF Core context, tracked employee write repository, no-tracking employee read store, the sync-status report reader over a T-SQL stored procedure, SQL Server mapping, migrations under `Persistence/Migrations`, expected conflict translation, the mandatory in-memory event publisher, and the TrackTik HTTP client with OAuth token acquisition and caching.
 
 #### Providers
 
@@ -95,12 +95,13 @@ Domain defines the employee aggregate repository abstraction, following the aggr
 
 - `SyncEmployeeCommandHandler` validates and maps provider input, coordinates same-identity work, performs the required two commits, calls the TrackTik port, and publishes the aggregate-created event after the successful final commit.
 - `GetEmployeeQueryHandler` returns an immutable Application read model through `IEmployeeReadStore`; it never loads a tracked aggregate for transport retrieval.
+- `GetSyncStatusReportQueryHandler` returns an immutable `SyncStatusReport` through `IEmployeeSyncStatusReportReader`, which Infrastructure implements by executing the `dbo.usp_GetEmployeeSyncStatusCounts` stored procedure (ADR 0004).
 - `Employee.MarkSynced` creates the typed `EmployeeSynced` domain event. The aggregate does not publish it and does not depend on a mediator.
 - The in-memory publisher invokes typed handlers sequentially. Durable delivery and an outbox remain outside the mandatory implementation.
 
 ## External-System Boundary
 
-`TrackTikOptions` binds the `TrackTik` section (API base URL, separate token URL, client ID and secret) and is validated on start. `TrackTikEmployeeClient` is a typed `HttpClient` (10-second timeout) that POSTs new employees (`201`) and PUTs existing ones (`200`, without `employeeId`/`startDate`). `TrackTikTokenProvider` is a singleton that requests form-encoded client-credentials tokens without `scope`, caches them until 60 seconds before expiry, and is invalidated when TrackTik answers `401`; the client then retries once. Non-success responses, timeouts, network errors, and token failures become `TrackTikSyncResult.Failure` with a safe message built from the TrackTik error envelope; caller cancellation is rethrown. Local persisted synchronization history, not TrackTik GET behavior, decides between POST and PUT because the hosted mock does not retain data.
+`TrackTikOptions` binds the `TrackTik` section (API base URL, separate token URL, client ID and secret) and is validated on start. `TrackTikEmployeeClient` is a typed `HttpClient` (10-second timeout) that POSTs new employees (`201`) and PUTs existing ones (`200`, without `employeeId`/`startDate`). `TrackTikTokenProvider` is a singleton that requests form-encoded client-credentials tokens without `scope`, caches them until shortly before expiry (60 seconds, or half the lifetime for short-lived tokens), and is invalidated when TrackTik answers `401`; the client then retries once. Non-success responses, timeouts, network errors, and token failures become `TrackTikSyncResult.Failure` with a safe message built from the TrackTik error envelope; caller cancellation is rethrown. Local persisted synchronization history, not TrackTik GET behavior, decides between POST and PUT because the hosted mock does not retain data.
 
 ## API Boundary
 
@@ -108,7 +109,8 @@ Controllers are selected over minimal APIs to make transport responsibilities, v
 
 - `ProviderEmployeesController` (`POST api/v1/providers/{provider}/employees`) passes the raw JSON body to `SyncEmployeeCommandHandler` and maps each `SyncEmployeeOutcome` to one response: 201/200, 400 `ValidationProblemDetails`, 404, 409, or 502 with `syncStatus`, `employeeId`, `attempts`, `lastError`, and `lastAttemptAt` extensions.
 - `EmployeesController` (`GET api/v1/employees/{provider}/{providerEmployeeId}`) calls `GetEmployeeQueryHandler` and returns `EmployeeResponse` or 404.
-- `EmployeeResponse` is the single transport contract: flat TrackTik field names and lowercase contract strings from the Domain `ToContractValue()` extensions.
+- `ReportsController` (`GET api/v1/reports/sync-status`) calls `GetSyncStatusReportQueryHandler` and returns `SyncStatusReportResponse`.
+- `EmployeeResponse` is the employee transport contract: flat TrackTik field names and lowercase contract strings from the Domain `ToContractValue()` extensions.
 - Asp.Versioning supplies URL-segment versioning and the versioned OpenAPI document (`/openapi/v1.json`).
 - `AddProblemDetails` (with `traceId`), the built-in `UseExceptionHandler` (logs the exception, returns a generic 500 without details), `UseStatusCodePages`, and `[ApiController]` model validation make every error response `application/problem+json`.
 - Composition is `AddApi()` + `AddApplication()` + `AddInfrastructure(...)`; controllers never touch EF Core or providers directly.
@@ -119,6 +121,7 @@ Controllers are selected over minimal APIs to make transport responsibilities, v
 - Application tests cover synchronization ordering, immutable command/query results, same-identity coordination, and post-commit event timing with test doubles at application ports.
 - Infrastructure tests cover provider mappings, EF Core model constraints, no-tracking read projections, provider identity separation, the in-memory publisher, TrackTik options validation, and the TrackTik client through a stub `HttpMessageHandler`: request shape, token reuse and renewal, `401` retry, error envelopes, `429`/`5xx`, timeouts, network failures, and token failures.
 - API integration tests use `WebApplicationFactory` to cover routes, OpenAPI, and `ProblemDetails` behavior.
+- Container tests (Testcontainers) host the same API against a real SQL Server to cover migrations, the composite key, check constraints, `rowversion` conflicts, and the report procedure. They report Inconclusive when Docker is unavailable.
 - The hosted TrackTik mock will not be used for automated failure tests or high-volume test execution.
 
 All automated tests run through `dotnet test ManagerEmployee.slnx`.

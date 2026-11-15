@@ -29,7 +29,8 @@ Source/ManagerEmployee.Api/            ASP.NET Core host and composition root
 Source/ManagerEmployee.Application/
 Source/ManagerEmployee.Domain/
 Source/ManagerEmployee.Infrastructure/  EF Core, provider adapters (Providers/), events
-Tests/ManagerEmployee.Api.IntegrationTests/
+Tests/ManagerEmployee.Api.ContainerTests/     API against real SQL Server (Testcontainers)
+Tests/ManagerEmployee.Api.IntegrationTests/   API with the EF Core in-memory provider
 Tests/ManagerEmployee.Application.Tests/
 Tests/ManagerEmployee.Domain.Tests/
 Tests/ManagerEmployee.Infrastructure.Tests/
@@ -51,7 +52,10 @@ dotnet test ManagerEmployee.slnx --no-build
 dotnet format ManagerEmployee.slnx --verify-no-changes
 ```
 
-`dotnet test ManagerEmployee.slnx` is the single command for all automated tests. No database, Docker, or network access is needed: TrackTik is replaced by a fake `HttpMessageHandler` or a fake client, and the API integration tests (`WebApplicationFactory`) use the EF Core in-memory provider.
+`dotnet test ManagerEmployee.slnx` is the single command for all automated tests. No network access or TrackTik credentials are needed: TrackTik is replaced by a fake `HttpMessageHandler` or a fake client.
+
+- `ManagerEmployee.Api.IntegrationTests` runs the full HTTP pipeline (`WebApplicationFactory`) on the EF Core in-memory provider, with no database needed.
+- `ManagerEmployee.Api.ContainerTests` runs the same pipeline against a real SQL Server started with Testcontainers (`mcr.microsoft.com/mssql/server:2022-latest`, the image Compose uses). It needs a running Docker engine. One container serves the whole run, and each test gets its own database. If Docker is not reachable, these tests are reported as skipped (Inconclusive) rather than failed. To run only these tests: `dotnet test Tests/ManagerEmployee.Api.ContainerTests/ManagerEmployee.Api.ContainerTests.csproj --no-build`.
 
 The tests cover:
 
@@ -61,6 +65,7 @@ The tests cover:
 - persistence conflicts and same-identity coordination
 - the TrackTik client: token reuse, refresh after `401`, timeouts, `5xx`, and token failures
 - the versioned API routes, the ProblemDetails responses (`400`, `404`, `502`), and the OpenAPI document
+- against real SQL Server: every migration and the report procedure applied at startup, the full POST/GET round trip, a resubmission updating the single row with a PUT, `failed` persisted on a `502`, same-email employees from different providers kept apart, the composite primary key and `rowversion` turning concurrent writes into conflicts, the status check constraint, and the sync-status report
 
 ## Run Directly
 
@@ -108,6 +113,7 @@ All routes are versioned with a URL segment (`/api/v1`). Every error response is
 |---|---|
 | `POST /api/v1/providers/{provider}/employees` | `201` first time an employee is stored (with `Location`), `200` resubmission, `400` invalid payload (`errors` keyed by provider field), `404` unknown provider, `409` concurrent update, `415` non-JSON body, `502` TrackTik failure (body includes `syncStatus`, `employeeId`, `attempts`, `lastError`, `lastAttemptAt`) |
 | `GET /api/v1/employees/{provider}/{providerEmployeeId}` | `200` stored employee with its TrackTik `employeeId`, `syncStatus`, `attempts`, `lastError`, `lastAttemptAt`; `404` unknown provider or employee |
+| `GET /api/v1/reports/sync-status` | `200` stored employee counts per sync status, for example `{"pending":0,"synced":2,"failed":1,"total":3}`. Served by the T-SQL procedure `dbo.usp_GetEmployeeSyncStatusCounts` (bonus) |
 
 `{provider}` is `provider1` or `provider2` (lowercase). Each POST body is one employee in that provider's schema.
 
@@ -121,6 +127,8 @@ curl -i -X POST http://localhost:8080/api/v1/providers/provider2/employees \
   -d '{"employee_number":"P2_001","personal_info":{"given_name":"Carol","family_name":"Davis","email":"carol.davis@provider2.com","mobile":"+1-555-0201"},"work_info":{"role":"Security Guard","division":"Night Shift Security","start_date":"2024-02-01","current_status":"employed"}}'
 
 curl -i http://localhost:8080/api/v1/employees/provider1/P1_001
+
+curl -i http://localhost:8080/api/v1/reports/sync-status
 ```
 
 Example `GET` response:
@@ -158,7 +166,7 @@ All TrackTik settings live in the `TrackTik` configuration section and can come 
 
 The settings are validated at startup: both URLs must be absolute and both credentials must be set. Supply the credentials with user secrets (see [Run Directly](#run-directly)) or environment variables, and never put real values in committed `appsettings*.json` files.
 
-The client requests a token with a form-encoded `client_credentials` grant (no `scope`), caches it until 60 seconds before `expires_in`, and on a `401` refreshes the token and retries once. TrackTik errors, timeouts (10 seconds), and token failures are recorded as `failed` with a safe `lastError`, for example `TrackTik returned 400 VALIDATION_ERROR: Invalid employee data (email: Invalid email format)`; credentials and tokens are never included.
+The client requests a token with a form-encoded `client_credentials` grant (no `scope`), caches it until shortly before `expires_in` (60 seconds, or half the lifetime for tokens shorter than two minutes), and on a `401` refreshes the token and retries once. TrackTik errors, timeouts (10 seconds), and token failures are recorded as `failed` with a safe `lastError`, for example `TrackTik returned 400 VALIDATION_ERROR: Invalid employee data (email: Invalid email format)`; credentials and tokens are never included.
 
 ## Database Migrations
 
@@ -183,7 +191,7 @@ Alternatively, set `Database__ApplyMigrationsOnStartup=true` (or `Database:Apply
 - Controllers are selected over minimal APIs to make transport boundaries explicit.
 - The architecture stays lightweight: no mediator, generic repository, AutoMapper, or event-bus framework is introduced without a concrete need.
 - Commands and queries use directly injected handlers; no command/query dispatcher or marker hierarchy is used.
-- Mandatory behavior is implemented and verified before any bonus requirement.
+- Bonus work done after the mandatory scope: command/query separation (direct handlers, a tracked write repository, and no-tracking read stores), a T-SQL report procedure (`GET /api/v1/reports/sync-status`, ADR 0004), and Testcontainers integration tests. NATS was not attempted. The in-memory publisher covers the mandatory event behavior.
 - The persistence representation and initial concurrency safeguards are documented in ADRs 0002 and 0003. Same-identity requests are serialized within one process; cross-instance races return an explicit persistence-conflict outcome. Observability (structured logging dimensions and metrics) is not implemented yet.
 - Provider DTOs are `internal` to `Infrastructure/Providers`; Application receives only normalized records and Domain receives only domain values.
 - Domain owns the composite employee identity, aggregate repository abstraction, field policy, cohesive profile/attempt models, and typed `EmployeeSynced` event; Infrastructure owns the EF Core write and read adapters.
@@ -195,3 +203,11 @@ Alternatively, set `Database__ApplyMigrationsOnStartup=true` (or `Database:Apply
 - A concurrent update detected by the database returns `409`. Same-identity requests are serialized only within one API instance. With several instances, a conflict on the final `synced` commit after TrackTik accepted a POST leaves local state saying the employee was never created, so the next submission POSTs again. Removing that window would need a distributed lock or an outbox, which is outside the mandatory scope.
 - One submission makes at most four sequential TrackTik calls (token, request, and one token refresh plus retry after `401`), each with a 10-second timeout.
 - Once the `pending` commit succeeds, the sync finishes even if the client disconnects, so the stored status never stays `pending` after TrackTik has accepted the employee.
+
+## What I'd Do Next
+
+- **Durable events**: replace the in-memory publisher with an outbox table written in the same commit as `synced`, relayed to NATS (or another broker). This would survive a crash between the commit and publication.
+- **Multi-instance safety**: replace the process-local coordinator with a distributed lock (for example `sp_getapplock` or Redis) or a per-identity queue, so concurrent instances cannot race on the final commit.
+- **Resilience**: add a bounded retry with jitter for idempotent TrackTik `PUT`s on `429`/`5xx` (honouring `Retry-After`), and a circuit breaker so an outage fails fast.
+- **Observability**: add structured logs with the employee identity and trace id, metrics for sync outcomes and TrackTik latency, and OpenTelemetry export.
+- **Background reconciliation**: add a job that retries `failed` employees on a schedule, instead of waiting for a provider resubmission.

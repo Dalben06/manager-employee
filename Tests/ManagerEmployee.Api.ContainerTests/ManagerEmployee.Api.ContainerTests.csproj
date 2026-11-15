@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="MSTest" />
+    <PackageReference Include="Testcontainers.MsSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared with the in-memory API tests so both suites use the same fixtures and TrackTik fake. -->
+    <Compile Include="..\ManagerEmployee.Api.IntegrationTests\Infrastructure\FakeTrackTikEmployeeClient.cs" Link="Shared\FakeTrackTikEmployeeClient.cs" />
+    <Compile Include="..\ManagerEmployee.Api.IntegrationTests\Infrastructure\ProviderPayloads.cs" Link="Shared\ProviderPayloads.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Source\ManagerEmployee.Api\ManagerEmployee.Api.csproj" />
+  </ItemGroup>
+
+</Project>

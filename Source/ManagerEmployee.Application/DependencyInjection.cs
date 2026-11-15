@@ -1,5 +1,6 @@
 using ManagerEmployee.Application.Employees.Commands.SyncEmployee;
 using ManagerEmployee.Application.Employees.Queries.GetEmployee;
+using ManagerEmployee.Application.Employees.Queries.GetSyncStatusReport;
 using ManagerEmployee.Application.Synchronization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -17,6 +18,7 @@ public static class DependencyInjection
 
         services.AddScoped<SyncEmployeeCommandHandler>();
         services.AddScoped<GetEmployeeQueryHandler>();
+        services.AddScoped<GetSyncStatusReportQueryHandler>();
         services.AddSingleton<EmployeeSynchronizationCoordinator>();
         services.TryAddSingleton(TimeProvider.System);
 

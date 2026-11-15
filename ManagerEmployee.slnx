@@ -10,6 +10,7 @@
   </Folder>
   <Folder Name="/Tests/" />
   <Folder Name="/Tests/Apps/">
+    <Project Path="Tests/ManagerEmployee.Api.ContainerTests/ManagerEmployee.Api.ContainerTests.csproj" />
     <Project Path="Tests/ManagerEmployee.Api.IntegrationTests/ManagerEmployee.Api.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/Tests/Services/">
