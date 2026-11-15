@@ -39,6 +39,8 @@ Override the connection with `ConnectionStrings__ManagerEmployeeDatabase` when t
 
 ## Non-Source Directories
 
+The directories below are local-only and git-ignored; they do not exist in a fresh clone of the published repository.
+
 - `examples/AbcCompany` and `examples/EquinoxProject` are reference repositories for the aggregate-repository style. They are not part of `ManagerEmployee.slnx`; don't modify or build them.
 - `docs/superpowers/{plans,specs}` holds earlier planning artifacts. `prompts/` holds the design prompt and requirements ledger.
 - `interview-detail/` is git-ignored and contains the original challenge spec, JSON schemas, sample data, and personal OAuth credentials (see the AGENTS.md secret rules).

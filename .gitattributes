@@ -1,0 +1,7 @@
+# Keep LF everywhere (matches .editorconfig end_of_line = lf) so `dotnet format --verify-no-changes`
+# passes on Windows checkouts with core.autocrlf=true, not only on Linux CI.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

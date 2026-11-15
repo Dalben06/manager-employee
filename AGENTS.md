@@ -2,6 +2,8 @@
 
 ## Contract And Evidence
 
+> `prompts/`, `interview-detail/`, `examples/`, and `docs/superpowers/` are local-only working folders. They are git-ignored and do not exist in the published repository; the README and `Documentation/` are the public sources of truth.
+
 - Read `prompts/requirements.md` before implementation work and name the requirement IDs being addressed.
 - Treat `interview-detail/README.md`, `interview-detail/API_DOCUMENTATION.md`, `interview-detail/SUBMISSION.md`, `interview-detail/schemas/*.json`, and `interview-detail/sample-data/*.json` as authoritative when the requirements ledger is unclear.
 - Update requirement checkboxes and `Completion Evidence` only after verification succeeds; record the IDs, changed files, and exact successful command or test result.
